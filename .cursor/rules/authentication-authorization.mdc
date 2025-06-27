@@ -1,0 +1,257 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Authentication & Authorization with Clerk
+
+## Overview
+This project uses **Clerk** for authentication and authorization. **CRITICAL**: Users must only access their own data and never access data belonging to other users. All data access must be properly filtered by user identity.
+
+## Authentication Setup
+- Authentication: Clerk middleware in [src/middleware.ts](mdc:src/middleware.ts)
+- User identification: Clerk `userId` stored in database records
+- Database schema: User association through `userId` field in [src/db/schema.ts](mdc:src/db/schema.ts)
+
+## Core Security Principles
+
+### 1. User Data Isolation
+**MANDATORY**: Every database query that retrieves user-specific data MUST filter by the authenticated user's ID.
+
+```typescript
+import { auth } from "@clerk/nextjs/server";
+import { db } from '@/db';
+import { decksTable, cardsTable } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+
+// ✅ CORRECT: Always filter by userId
+const { userId } = await auth();
+if (!userId) {
+  return { error: "Unauthorized" };
+}
+
+const userDecks = await db.select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId));
+```
+
+### 2. Authentication Checks
+**REQUIRED**: Every protected route and API endpoint must verify user authentication before data access.
+
+```typescript
+// ✅ CORRECT: Check authentication first
+const { userId } = await auth();
+if (!userId) {
+  redirect('/');
+  // or return unauthorized response for API routes
+}
+```
+
+### 3. Data Access Patterns
+
+#### Server Components
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+export default async function DashboardPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    redirect('/');
+  }
+  
+  // All queries filtered by userId
+  const userDecks = await db.select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+    
+  return <DecksList decks={userDecks} />;
+}
+```
+
+#### API Routes
+```typescript
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+
+export async function GET() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  const userDecks = await db.select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+    
+  return NextResponse.json(userDecks);
+}
+```
+
+#### Client Components (with Server Actions)
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+async function getUserDecks() {
+  "use server";
+  
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  
+  return await db.select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+}
+```
+
+## Database Security Rules
+
+### Insert Operations
+- Always include `userId` when creating new records
+- Verify user owns parent records before creating children
+
+```typescript
+// ✅ CORRECT: Include userId for new decks
+await db.insert(decksTable).values({
+  title: "New Deck",
+  description: "Description", 
+  userId: userId // Always include
+});
+
+// ✅ CORRECT: Verify deck ownership before adding cards
+const deck = await db.select()
+  .from(decksTable)
+  .where(eq(decksTable.id, deckId) && eq(decksTable.userId, userId))
+  .limit(1);
+  
+if (!deck.length) {
+  throw new Error("Deck not found or unauthorized");
+}
+
+await db.insert(cardsTable).values({
+  deckId: deckId,
+  front: "Question",
+  back: "Answer"
+});
+```
+
+### Update/Delete Operations
+- Always combine record ID with user ID in WHERE clauses
+- Never allow operations on records not owned by the current user
+
+```typescript
+// ✅ CORRECT: Update only user's own records
+await db.update(decksTable)
+  .set({ title: "Updated Title" })
+  .where(eq(decksTable.id, deckId) && eq(decksTable.userId, userId));
+
+// ✅ CORRECT: Delete only user's own records  
+await db.delete(decksTable)
+  .where(eq(decksTable.id, deckId) && eq(decksTable.userId, userId));
+```
+
+### Related Data Access
+When accessing cards through decks, ensure deck ownership:
+
+```typescript
+// ✅ CORRECT: Access cards only from user's decks
+const userCards = await db.select()
+  .from(cardsTable)
+  .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+  .where(eq(decksTable.userId, userId));
+```
+
+## Route Protection
+
+### Protected Pages
+Use Clerk's route protection for pages requiring authentication:
+
+```typescript
+// In page.tsx or layout.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+
+export default async function ProtectedPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    redirect('/');
+  }
+  
+  // Page content
+}
+```
+
+### Middleware Configuration
+Ensure [src/middleware.ts](mdc:src/middleware.ts) properly protects routes:
+
+```typescript
+export const config = {
+  matcher: [
+    "/((?!_next|[^?]*.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
+};
+```
+
+## FORBIDDEN Practices
+
+### ❌ NEVER DO THESE:
+1. **Query without user filtering**:
+   ```typescript
+   // ❌ WRONG: Exposes all users' data
+   const allDecks = await db.select().from(decksTable);
+   ```
+
+2. **Skip authentication checks**:
+   ```typescript
+   // ❌ WRONG: No auth verification
+   export async function GET() {
+     return db.select().from(decksTable);
+   }
+   ```
+
+3. **Trust client-provided user IDs**:
+   ```typescript
+   // ❌ WRONG: Never trust client data for user identification
+   const userIdFromClient = request.body.userId;
+   ```
+
+4. **Use incomplete WHERE clauses**:
+   ```typescript
+   // ❌ WRONG: Missing user filter
+   await db.update(decksTable)
+     .set({ title: "Hacked" })  
+     .where(eq(decksTable.id, deckId)); // Missing userId check!
+   ```
+
+5. **Expose sensitive user data**:
+   ```typescript
+   // ❌ WRONG: Don't expose other users' data in responses
+   return { decks: allDecksIncludingOtherUsers };
+   ```
+
+## Testing Authorization
+Always test that:
+1. Users cannot access other users' data
+2. Unauthenticated requests are rejected
+3. Data operations are properly scoped to the authenticated user
+4. Error messages don't leak sensitive information
+
+## Error Handling
+- Return generic error messages to prevent information leakage
+- Log detailed errors server-side for debugging
+- Never expose user IDs or internal data in client-facing errors
+
+```typescript
+// ✅ CORRECT: Generic error response
+return NextResponse.json(
+  { error: "Resource not found" }, 
+  { status: 404 }
+);
+
+// Not: { error: "Deck with ID 123 belongs to user xyz" }
+```
+
+**REMEMBER**: When in doubt, always err on the side of being more restrictive with data access. User data isolation is non-negotiable.

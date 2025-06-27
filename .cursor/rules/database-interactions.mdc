@@ -1,0 +1,69 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Database Interactions with Drizzle ORM
+
+## Overview
+All database interactions in this project **MUST** use Drizzle ORM with the predefined schema and queries. Never use raw SQL or other ORMs.
+
+## Database Setup
+- Database connection: [src/db/index.ts](mdc:src/db/index.ts)
+- Database schema: [src/db/schema.ts](mdc:src/db/schema.ts)
+- Uses Neon serverless PostgreSQL with Drizzle ORM
+
+## Schema Structure
+The database schema includes:
+- **decksTable**: Flashcard decks with user association
+- **cardsTable**: Individual flashcards belonging to decks
+- **Relations**: Properly defined one-to-many relationships
+
+## Required Imports
+When working with database operations, always import:
+```typescript
+import { db } from '@/db';
+import { decksTable, cardsTable } from '@/db/schema';
+```
+
+## Database Operations Guidelines
+
+### Query Operations
+- Use Drizzle's query syntax: `db.select()`, `db.insert()`, `db.update()`, `db.delete()`
+- Always use the schema tables: `decksTable`, `cardsTable`
+- Leverage Drizzle's type safety and IntelliSense
+
+### Example Patterns
+```typescript
+// Select with relations
+const decksWithCards = await db.select().from(decksTable).leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId));
+
+// Insert new records
+const newDeck = await db.insert(decksTable).values({
+  title: "My Deck",
+  description: "Description",
+  userId: "user_123"
+}).returning();
+
+// Update records
+await db.update(decksTable).set({ title: "Updated Title" }).where(eq(decksTable.id, deckId));
+
+// Delete with cascade
+await db.delete(decksTable).where(eq(decksTable.id, deckId));
+```
+
+### Authentication Integration
+- Always filter queries by `userId` from Clerk authentication
+- Use `userId` field in decksTable to ensure user data isolation
+- Never expose data across different users
+
+## Forbidden Practices
+- ❌ Raw SQL queries
+- ❌ Direct database connections outside of [src/db/index.ts](mdc:src/db/index.ts)
+- ❌ Schema modifications without updating [src/db/schema.ts](mdc:src/db/schema.ts)
+- ❌ Bypassing user-based filtering for security
+
+## Migration & Schema Changes
+- Use Drizzle Kit for migrations
+- Always update schema definitions in [src/db/schema.ts](mdc:src/db/schema.ts)
+- Maintain referential integrity with proper foreign key constraints
