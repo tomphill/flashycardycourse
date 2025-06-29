@@ -18,6 +18,7 @@ import EditDeckDialog from "./components/EditDeckDialog";
 import EditCardDialog from "./components/EditCardDialog";
 import DeleteCardDialog from "./components/DeleteCardDialog";
 import DeleteDeckDialog from "./components/DeleteDeckDialog";
+import AIGenerationButton from "./components/AIGenerationButton";
 
 interface DeckPageProps {
   params: {
@@ -153,15 +154,22 @@ export default async function DeckPage({ params }: DeckPageProps) {
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-semibold">Cards</h2>
               {cardCount > 0 && (
-                <AddCardDialog
-                  deckId={deckId}
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Card
-                    </Button>
-                  }
-                />
+                <div className="flex gap-2">
+                  <AIGenerationButton
+                    deckId={deckId}
+                    deckTitle={deck.title}
+                    deckDescription={deck.description || undefined}
+                  />
+                  <AddCardDialog
+                    deckId={deckId}
+                    trigger={
+                      <Button variant="outline" size="sm">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Card
+                      </Button>
+                    }
+                  />
+                </div>
               )}
             </div>
 
@@ -230,15 +238,23 @@ export default async function DeckPage({ params }: DeckPageProps) {
                   <CardDescription className="mb-6">
                     Add your first flashcard to start studying
                   </CardDescription>
-                  <AddCardDialog
-                    deckId={deckId}
-                    trigger={
-                      <Button size="lg">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Your First Card
-                      </Button>
-                    }
-                  />
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <AIGenerationButton
+                      deckId={deckId}
+                      deckTitle={deck.title}
+                      deckDescription={deck.description || undefined}
+                      size="lg"
+                    />
+                    <AddCardDialog
+                      deckId={deckId}
+                      trigger={
+                        <Button size="lg">
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Your First Card
+                        </Button>
+                      }
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )}

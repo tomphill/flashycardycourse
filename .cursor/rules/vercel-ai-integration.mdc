@@ -1,0 +1,454 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Vercel AI Integration for Flashcard Generation
+
+## Overview
+This project uses the **Vercel AI SDK** (`ai` npm package) to power AI-driven flashcard generation features. The AI integration allows users to automatically generate flashcards from text input, topics, or learning materials.
+
+## Core Dependencies
+```json
+{
+  "ai": "^3.x.x",
+  "@ai-sdk/openai": "^0.x.x",
+  "zod": "^3.x.x"
+}
+```
+
+## AI Feature Architecture
+
+### Authentication & Billing Integration
+**CRITICAL**: AI flashcard generation is a **PREMIUM FEATURE** that requires:
+- User authentication via Clerk
+- Pro subscription (`plan: 'pro'` or `feature: 'ai_flashcard_generation'`)
+- Proper feature gating using Clerk's billing system
+
+```typescript
+import { auth } from '@clerk/nextjs/server';
+
+export async function generateAIFlashcards(prompt: string) {
+  const { has, userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  
+  const hasAIFeature = has({ feature: 'ai_flashcard_generation' });
+  if (!hasAIFeature) {
+    throw new Error("AI flashcard generation requires a Pro subscription");
+  }
+  
+  // Proceed with AI generation...
+}
+```
+
+### Structured Data Generation Pattern
+**MANDATORY**: Use Vercel AI's `generateObject` function for creating structured flashcard data.
+
+#### Core Implementation Pattern
+```typescript
+import { generateObject } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+
+// Define Zod schema for flashcard structure
+const FlashcardSchema = z.object({
+  flashcards: z.array(z.object({
+    front: z.string().min(1, "Front content required"),
+    back: z.string().min(1, "Back content required"),
+    difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+    tags: z.array(z.string()).optional(),
+  })),
+  metadata: z.object({
+    topic: z.string(),
+    totalCards: z.number(),
+    estimatedStudyTime: z.number().optional(),
+  }).optional(),
+});
+
+type FlashcardGenerationResult = z.infer<typeof FlashcardSchema>;
+
+export async function generateFlashcardsWithAI(
+  prompt: string, 
+  cardCount: number = 10,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+): Promise<FlashcardGenerationResult> {
+  const { object } = await generateObject({
+    model: openai('gpt-4o-mini'), // Cost-effective model for flashcards
+    schema: FlashcardSchema,
+    prompt: `Generate ${cardCount} flashcards about: ${prompt}
+    
+    Requirements:
+    - Create exactly ${cardCount} flashcards
+    - Difficulty level: ${difficulty}
+    - Front: Clear, concise questions or prompts
+    - Back: Accurate, detailed answers or explanations
+    - Cover different aspects of the topic
+    - Ensure educational value and accuracy
+    - Make questions progressively challenging if requested
+    
+    Topic: ${prompt}`,
+    temperature: 0.7, // Balanced creativity and consistency
+  });
+  
+  return object;
+}
+```
+
+### Server Action Integration
+**MANDATORY**: AI generation MUST be implemented as Server Actions following the project's data handling patterns.
+
+```typescript
+// src/app/decks/[deckId]/actions.ts (or similar)
+"use server";
+
+import { auth } from '@clerk/nextjs/server';
+import { createCard } from '@/db/queries';
+import { generateFlashcardsWithAI } from '@/lib/ai';
+import { z } from 'zod';
+
+const AIGenerationSchema = z.object({
+  deckId: z.string().uuid(),
+  prompt: z.string().min(10, "Prompt must be at least 10 characters"),
+  cardCount: z.number().min(1).max(50).default(10),
+  difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
+});
+
+type AIGenerationInput = z.infer<typeof AIGenerationSchema>;
+
+export async function generateAIFlashcardsAction(input: AIGenerationInput) {
+  // 1. Validate input
+  const validatedInput = AIGenerationSchema.parse(input);
+  
+  // 2. Check authentication and billing
+  const { has, userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  
+  const hasAIFeature = has({ feature: 'ai_flashcard_generation' });
+  if (!hasAIFeature) {
+    throw new Error("AI flashcard generation requires a Pro subscription");
+  }
+  
+  // 3. Verify deck ownership (using centralized query)
+  const deck = await getDeckById(validatedInput.deckId);
+  if (!deck) {
+    throw new Error("Deck not found or unauthorized");
+  }
+  
+  // 4. Generate flashcards with AI
+  const result = await generateFlashcardsWithAI(
+    validatedInput.prompt,
+    validatedInput.cardCount,
+    validatedInput.difficulty
+  );
+  
+  // 5. Save generated cards to database (using centralized queries)
+  const createdCards = [];
+  for (const flashcard of result.flashcards) {
+    const card = await createCard({
+      deckId: validatedInput.deckId,
+      front: flashcard.front,
+      back: flashcard.back,
+    });
+    createdCards.push(card);
+  }
+  
+  return {
+    cards: createdCards,
+    metadata: result.metadata,
+  };
+}
+```
+
+## UI Integration Patterns
+
+### Premium Feature Protection
+**MANDATORY**: Always wrap AI features with proper billing protection using Clerk's `<Protect>` component.
+
+```typescript
+import { Protect } from '@clerk/nextjs';
+import { Button } from '@/components/ui/button';
+
+export function AIGenerationButton({ deckId }: { deckId: string }) {
+  return (
+    <Protect
+      feature="ai_flashcard_generation"
+      fallback={
+        <Button disabled variant="outline">
+          Upgrade to Pro for AI Generation
+        </Button>
+      }
+    >
+      <AIFlashcardDialog deckId={deckId} />
+    </Protect>
+  );
+}
+```
+
+### AI Generation Dialog Component
+**MANDATORY**: Use shadcn/ui components for consistent AI generation interface.
+
+```typescript
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+
+export function AIFlashcardDialog({ deckId }: { deckId: string }) {
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  const handleGenerate = async (formData: FormData) => {
+    const input = {
+      deckId,
+      prompt: formData.get('prompt') as string,
+      cardCount: parseInt(formData.get('cardCount') as string),
+      difficulty: formData.get('difficulty') as 'easy' | 'medium' | 'hard',
+    };
+    
+    setIsGenerating(true);
+    try {
+      await generateAIFlashcardsAction(input);
+      // Handle success (close dialog, refresh cards, show toast)
+    } catch (error) {
+      // Handle error (show error message)
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          ✨ Generate with AI
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Generate Flashcards with AI</DialogTitle>
+        </DialogHeader>
+        <form action={handleGenerate} className="space-y-4">
+          <div>
+            <Label htmlFor="prompt">Topic or Learning Material</Label>
+            <Textarea
+              id="prompt"
+              name="prompt"
+              placeholder="Enter a topic, paste text, or describe what you want to learn..."
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="cardCount">Number of Cards</Label>
+              <Input
+                id="cardCount"
+                name="cardCount"
+                type="number"
+                min="1"
+                max="50"
+                defaultValue="10"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="difficulty">Difficulty</Label>
+              <select name="difficulty" className="...">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+          </div>
+          <Button type="submit" disabled={isGenerating} className="w-full">
+            {isGenerating ? 'Generating...' : 'Generate Flashcards'}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+## Model Selection & Configuration
+
+### Recommended Models
+- **Primary**: `gpt-4o-mini` - Cost-effective, good quality for educational content
+- **Alternative**: `gpt-3.5-turbo` - Faster, more economical for simple flashcards
+- **Premium**: `gpt-4o` - Highest quality for complex academic content
+
+### Prompt Engineering Guidelines
+**MANDATORY**: Follow these prompt patterns for consistent flashcard quality:
+
+```typescript
+const createPrompt = (topic: string, cardCount: number, difficulty: string) => `
+Generate ${cardCount} high-quality flashcards for learning about: ${topic}
+
+Requirements:
+- Difficulty: ${difficulty}
+- Create EXACTLY ${cardCount} unique flashcards
+- Front side: Clear, specific questions or prompts
+- Back side: Accurate, concise answers with key details
+- Cover different aspects and subtopics
+- Progress from basic concepts to more advanced
+- Use active recall techniques
+- Include examples where helpful
+
+Guidelines:
+- Questions should test understanding, not just memorization
+- Answers should be complete but not overwhelming
+- Use clear, educational language
+- Ensure factual accuracy
+- Make each card focused on one concept
+
+Topic: ${topic}
+`;
+```
+
+## Error Handling & User Experience
+
+### AI Generation Error Patterns
+```typescript
+export async function generateFlashcardsWithAI(prompt: string, cardCount: number) {
+  try {
+    const { object } = await generateObject({
+      model: openai('gpt-4o-mini'),
+      schema: FlashcardSchema,
+      prompt: createPrompt(prompt, cardCount, difficulty),
+      maxRetries: 2, // Retry on failure
+      temperature: 0.7,
+    });
+    
+    return object;
+  } catch (error) {
+    if (error.name === 'AI_ParseError') {
+      throw new Error('Failed to generate valid flashcards. Please try again with a different prompt.');
+    }
+    if (error.name === 'AI_RateLimitError') {
+      throw new Error('AI service is currently busy. Please try again in a moment.');
+    }
+    throw new Error('Failed to generate flashcards. Please try again.');
+  }
+}
+```
+
+### Loading States & Feedback
+**MANDATORY**: Provide clear feedback during AI generation:
+
+```typescript
+// Show generation progress
+const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
+
+// In the UI:
+{generationStatus === 'generating' && (
+  <div className="flex items-center gap-2">
+    <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+    <span>Generating flashcards with AI...</span>
+  </div>
+)}
+```
+
+## Cost Management & Rate Limiting
+
+### Usage Monitoring
+**RECOMMENDED**: Track AI generation usage per user:
+
+```typescript
+// Consider implementing usage tracking
+const trackAIUsage = async (userId: string, tokensUsed: number) => {
+  // Log usage for monitoring and billing
+};
+```
+
+### Rate Limiting
+**RECOMMENDED**: Implement rate limiting for AI features:
+
+```typescript
+// Consider rate limiting per user per time period
+const checkRateLimit = async (userId: string) => {
+  // Check if user has exceeded AI generation limits
+};
+```
+
+## Integration with Database Schema
+
+### Flashcard Storage
+**MANDATORY**: Generated flashcards MUST use the existing database schema from [src/db/schema.ts](mdc:src/db/schema.ts):
+
+```typescript
+// Save AI-generated cards using centralized queries
+import { createCard } from '@/db/queries/cards';
+
+for (const flashcard of aiResult.flashcards) {
+  await createCard({
+    deckId: targetDeckId,
+    front: flashcard.front,
+    back: flashcard.back,
+  });
+}
+```
+
+### Metadata Tracking
+**OPTIONAL**: Consider adding AI generation metadata to track:
+- Generation timestamp
+- Model used
+- Token usage
+- User satisfaction ratings
+
+## Security & Privacy Considerations
+
+### Data Privacy
+**MANDATORY**: 
+- Never log user prompts or generated content
+- Ensure AI-generated content belongs to the authenticated user
+- Follow the same user data isolation rules as other features
+
+### Content Filtering
+**RECOMMENDED**: Consider implementing content moderation for AI-generated flashcards to ensure educational appropriateness.
+
+## Testing AI Features
+
+### Development Testing
+**MANDATORY**: Always test AI features with:
+- Valid and invalid prompts
+- Different card counts and difficulties
+- Billing protection (free vs. pro users)
+- Error scenarios (API failures, malformed responses)
+
+### Mock AI Responses
+**RECOMMENDED**: Create mock AI responses for development:
+
+```typescript
+// For development/testing
+const mockAIGeneration = async (prompt: string, cardCount: number) => {
+  return {
+    flashcards: Array.from({ length: cardCount }, (_, i) => ({
+      front: `Sample question ${i + 1} about ${prompt}`,
+      back: `Sample answer ${i + 1} for the topic`,
+    })),
+    metadata: {
+      topic: prompt,
+      totalCards: cardCount,
+    },
+  };
+};
+```
+
+## Integration Points
+
+### Database Operations
+- Use centralized query functions from [src/db/queries/index.ts](mdc:src/db/queries/index.ts)
+- Follow authentication patterns from [src/middleware.ts](mdc:src/middleware.ts)
+- Integrate with Clerk billing system for feature access
+
+### UI Components
+- Use shadcn/ui components exclusively from [src/components/ui/](mdc:src/components/ui)
+- Follow existing dialog and form patterns
+- Integrate with existing deck management components
+
+### Server Actions
+- Follow server action patterns established in the project
+- Use proper TypeScript typing with Zod validation
+- Integrate with existing error handling patterns
+
+**REMEMBER**: AI flashcard generation is a premium feature that requires proper authentication, billing verification, and integration with the existing project architecture. Always prioritize user experience, cost management, and data security.

@@ -6,9 +6,12 @@ import {
   deleteCard,
   updateDeck,
   deleteDeck,
+  getDeckById,
 } from "@/db/queries";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
+import { generateFlashcardsWithAI } from "@/lib/ai";
 
 // Validation schemas
 const CreateCardSchema = z.object({
@@ -51,12 +54,17 @@ const DeleteDeckSchema = z.object({
   deckId: z.number().positive(),
 });
 
+const AIGenerationSchema = z.object({
+  deckId: z.number().positive(),
+});
+
 // Types
 type CreateCardInput = z.infer<typeof CreateCardSchema>;
 type UpdateCardInput = z.infer<typeof UpdateCardSchema>;
 type DeleteCardInput = z.infer<typeof DeleteCardSchema>;
 type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
 type DeleteDeckInput = z.infer<typeof DeleteDeckSchema>;
+type AIGenerationInput = z.infer<typeof AIGenerationSchema>;
 
 export async function createCardAction(input: CreateCardInput) {
   try {
@@ -205,6 +213,113 @@ export async function deleteDeckAction(input: DeleteDeckInput) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete deck",
+    };
+  }
+}
+
+export async function generateAIFlashcardsAction(input: AIGenerationInput) {
+  try {
+    // 1. Validate input
+    const validatedInput = AIGenerationSchema.parse(input);
+
+    // 2. Check authentication and billing
+    const { has, userId } = await auth();
+    if (!userId) {
+      return {
+        success: false,
+        error: "Unauthorized",
+      };
+    }
+
+    const hasAIFeature =
+      has({ feature: "ai_flashcard_generation" }) || has({ plan: "pro" });
+    if (!hasAIFeature) {
+      return {
+        success: false,
+        error: "AI flashcard generation requires a Pro subscription",
+      };
+    }
+
+    // 3. Verify deck ownership (using centralized query)
+    const deck = await getDeckById(validatedInput.deckId);
+    if (!deck) {
+      return {
+        success: false,
+        error: "Deck not found or unauthorized",
+      };
+    }
+
+    // 4. Check if deck has both title and description
+    if (!deck.description || deck.description.trim() === "") {
+      return {
+        success: false,
+        error:
+          "Please add a description to your deck before generating AI flashcards",
+      };
+    }
+
+    // 4. Generate flashcards with AI
+    const result = await generateFlashcardsWithAI(
+      deck.title,
+      deck.description || undefined,
+      20, // Generate 20 cards as requested
+      "medium"
+    );
+
+    // 5. Save generated cards to database (using centralized queries)
+    const createdCards = [];
+    for (const flashcard of result.flashcards) {
+      const card = await createCard({
+        deckId: validatedInput.deckId,
+        front: flashcard.front,
+        back: flashcard.back,
+      });
+      createdCards.push(card);
+    }
+
+    // 6. Revalidate the deck page to show the new cards
+    revalidatePath(`/decks/${validatedInput.deckId}`);
+
+    return {
+      success: true,
+      cards: createdCards,
+      metadata: result.metadata,
+    };
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: `Validation failed: ${error.errors
+          .map((e: z.ZodIssue) => e.message)
+          .join(", ")}`,
+      };
+    }
+
+    console.error("Error generating AI flashcards:", error);
+
+    // Handle specific AI errors
+    if (error instanceof Error) {
+      if (error.message.includes("AI_ParseError")) {
+        return {
+          success: false,
+          error:
+            "Failed to generate valid flashcards. Please try again with a different prompt.",
+        };
+      }
+      if (error.message.includes("AI_RateLimitError")) {
+        return {
+          success: false,
+          error: "AI service is currently busy. Please try again in a moment.",
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to generate flashcards",
     };
   }
 }
