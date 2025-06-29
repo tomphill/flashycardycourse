@@ -15,14 +15,12 @@ import { generateAIFlashcardsAction } from "../actions";
 
 interface AIGenerationButtonProps {
   deckId: number;
-  deckTitle: string;
   deckDescription?: string;
   size?: "sm" | "lg";
 }
 
 export default function AIGenerationButton({
   deckId,
-  deckTitle,
   deckDescription,
   size = "sm",
 }: AIGenerationButtonProps) {

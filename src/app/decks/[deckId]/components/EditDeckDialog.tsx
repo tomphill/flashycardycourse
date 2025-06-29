@@ -68,7 +68,7 @@ export default function EditDeckDialog({
         <DialogHeader>
           <DialogTitle>Edit Deck</DialogTitle>
           <DialogDescription>
-            Update your deck's title and description.
+            Update your deck&apos;s title and description.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">

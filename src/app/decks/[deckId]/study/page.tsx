@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 import StudyInterface from "./components/StudyInterface";
 
 interface StudyPageProps {
-  params: {
+  params: Promise<{
     deckId: string;
-  };
+  }>;
 }
 
 export default async function StudyPage({ params }: StudyPageProps) {

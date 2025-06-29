@@ -4,7 +4,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
@@ -29,8 +28,8 @@ export default function DeckNotFound() {
             </div>
             <CardTitle className="text-2xl mb-2">Deck Not Found</CardTitle>
             <CardDescription className="text-lg mb-6">
-              The deck you're looking for doesn't exist or you don't have
-              permission to view it.
+              The deck you&apos;re looking for doesn&apos;t exist or you
+              don&apos;t have permission to view it.
             </CardDescription>
             <Link href="/dashboard">
               <Button size="lg">Return to Dashboard</Button>

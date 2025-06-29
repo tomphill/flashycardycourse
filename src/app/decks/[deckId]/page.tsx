@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
+
 import { ArrowLeft, Plus, Edit, Play, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -21,9 +21,9 @@ import DeleteDeckDialog from "./components/DeleteDeckDialog";
 import AIGenerationButton from "./components/AIGenerationButton";
 
 interface DeckPageProps {
-  params: {
+  params: Promise<{
     deckId: string;
-  };
+  }>;
 }
 
 export default async function DeckPage({ params }: DeckPageProps) {
@@ -58,8 +58,8 @@ export default async function DeckPage({ params }: DeckPageProps) {
                 </div>
                 <CardTitle className="text-2xl mb-2">Deck Not Found</CardTitle>
                 <CardDescription className="text-lg mb-6">
-                  The deck you're looking for doesn't exist or you don't have
-                  permission to view it.
+                  The deck you&apos;re looking for doesn&apos;t exist or you
+                  don&apos;t have permission to view it.
                 </CardDescription>
                 <Link href="/dashboard">
                   <Button size="lg">Return to Dashboard</Button>
@@ -157,7 +157,6 @@ export default async function DeckPage({ params }: DeckPageProps) {
                 <div className="flex gap-2">
                   <AIGenerationButton
                     deckId={deckId}
-                    deckTitle={deck.title}
                     deckDescription={deck.description || undefined}
                   />
                   <AddCardDialog
@@ -241,7 +240,6 @@ export default async function DeckPage({ params }: DeckPageProps) {
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <AIGenerationButton
                       deckId={deckId}
-                      deckTitle={deck.title}
                       deckDescription={deck.description || undefined}
                       size="lg"
                     />
@@ -290,8 +288,8 @@ export default async function DeckPage({ params }: DeckPageProps) {
                 </div>
                 <CardTitle className="text-2xl mb-2">Deck Not Found</CardTitle>
                 <CardDescription className="text-lg mb-6">
-                  The deck you're looking for doesn't exist or you don't have
-                  permission to view it.
+                  The deck you&apos;re looking for doesn&apos;t exist or you
+                  don&apos;t have permission to view it.
                 </CardDescription>
                 <Link href="/dashboard">
                   <Button size="lg">Return to Dashboard</Button>

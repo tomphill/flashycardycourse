@@ -111,15 +111,23 @@ export default function StudyInterface({ deck, cards }: StudyInterfaceProps) {
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault();
-          handlePrevious();
+          if (currentCardIndex > 0) {
+            setCurrentCardIndex(currentCardIndex - 1);
+            setIsFlipped(false);
+          }
           break;
         case "ArrowRight":
           event.preventDefault();
-          handleNext();
+          if (currentCardIndex < studyCards.length - 1) {
+            setCurrentCardIndex(currentCardIndex + 1);
+            setIsFlipped(false);
+          } else {
+            setSessionCompleted(true);
+          }
           break;
         case " ": // Spacebar
           event.preventDefault();
-          handleFlip();
+          setIsFlipped(!isFlipped);
           break;
         default:
           break;
@@ -133,7 +141,7 @@ export default function StudyInterface({ deck, cards }: StudyInterfaceProps) {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [currentCardIndex, studyCards.length, isFlipped, sessionCompleted]); // Dependencies for the handlers
+  }, [currentCardIndex, studyCards.length, isFlipped, sessionCompleted]);
 
   if (sessionCompleted) {
     const accuracy =

@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Plus, Crown } from "lucide-react";
+import { FileText, Crown } from "lucide-react";
 import Link from "next/link";
 import { CreateDeckDialog } from "./components/CreateDeckDialog";
 
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
           <Alert className="mb-6">
             <Crown className="h-4 w-4" />
             <AlertDescription>
-              You're using {deckCount} of 3 free decks.
+              You&apos;re using {deckCount} of 3 free decks.
               <Button variant="link" className="p-0 h-auto ml-1" asChild>
                 <Link href="/pricing">Upgrade to Pro</Link>
               </Button>{" "}
@@ -73,7 +73,7 @@ export default async function DashboardPage() {
           <Alert className="mb-6">
             <Crown className="h-4 w-4" />
             <AlertDescription>
-              You've reached the limit of 3 decks on the free plan.
+              You&apos;ve reached the limit of 3 decks on the free plan.
               <Button variant="link" className="p-0 h-auto ml-1" asChild>
                 <Link href="/pricing">Upgrade to Pro</Link>
               </Button>{" "}
