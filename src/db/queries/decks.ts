@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/db";
-import { decksTable } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 export async function getUserDecks() {
   const { userId } = await auth();
@@ -10,9 +10,20 @@ export async function getUserDecks() {
   }
 
   return await db
-    .select()
+    .select({
+      id: decksTable.id,
+      title: decksTable.title,
+      description: decksTable.description,
+      userId: decksTable.userId,
+      createdAt: decksTable.createdAt,
+      updatedAt: decksTable.updatedAt,
+      cardCount: sql<number>`COUNT(${cardsTable.id})`.as('cardCount'),
+    })
     .from(decksTable)
-    .where(eq(decksTable.userId, userId));
+    .leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId))
+    .where(eq(decksTable.userId, userId))
+    .groupBy(decksTable.id)
+    .orderBy(desc(decksTable.updatedAt));
 }
 
 export async function canCreateDeck(): Promise<{

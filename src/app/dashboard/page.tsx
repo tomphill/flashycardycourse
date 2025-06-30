@@ -86,18 +86,24 @@ export default async function DashboardPage() {
           {userDecks.length > 0 ? (
             userDecks.map((deck) => (
               <Link key={deck.id} href={`/decks/${deck.id}`} className="block">
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col">
+                  <CardHeader className="flex-grow">
                     <CardTitle className="text-xl">{deck.title}</CardTitle>
-                    {deck.description && (
-                      <CardDescription>{deck.description}</CardDescription>
-                    )}
+                    <CardDescription className="min-h-[20px]">
+                      {deck.description || "No description"}
+                    </CardDescription>
                   </CardHeader>
                   <Separator />
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">
-                      Last updated:{" "}
-                      {new Date(deck.updatedAt).toLocaleDateString()}
+                  <CardContent className="pt-4 mt-auto">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        <span>{deck.cardCount} card{deck.cardCount !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div>
+                        Last updated:{" "}
+                        {new Date(deck.updatedAt).toLocaleDateString()}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
